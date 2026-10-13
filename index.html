@@ -3,14 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>MindAR 10枚イラストスライドショー</title>
+  <title>カメラ背景・10枚イラストスライドショー</title>
   <style>
-    body {
+    body, html {
       margin: 0;
       padding: 0;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
       font-family: sans-serif;
+      background: #000;
     }
+    /* スマホのカメラ映像を背景に全画面表示 */
+    #camera-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      z-index: 1;
+    }
+    /* イラストを表示するコンテナ */
+    #slide-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2;
+      touch-action: none; /* ブラウザ独自のズームやスクロールを無効化 */
+    }
+    /* イラスト画像 */
+    #slide-img {
+      max-width: 85vw;
+      max-height: 85vh;
+      object-fit: contain;
+      transform-origin: center center;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    /* 状態表示オーバーレイ */
     #info-overlay {
       position: absolute;
       top: 12px;
@@ -27,143 +63,127 @@
     .success { color: #51cf66 !important; }
     .error { color: #ff6b6b !important; }
   </style>
-
-  <!-- A-Frame & MindAR の読み込み -->
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 </head>
 <body>
 
   <!-- 操作ガイドの表示 -->
   <div id="info-overlay">
-    <div>状態: <span id="status">準備中...</span></div>
-    <div style="margin-top: 4px; font-size: 10px; color: #aaa;">画面タップ: イラスト切替(1/10) / 2本指: 拡大縮小</div>
+    <div>状態: <span id="status">カメラ起動中...</span></div>
+    <div style="margin-top: 4px; font-size: 10px; color: #aaa;">画面タップ: 切替(1/10) / ピンチ: 拡大縮小 / ドラッグ: 移動</div>
   </div>
 
-  <a-scene 
-    mindar-image="imageTargetSrc: ./targets.mind;" 
-    vr-mode-ui="enabled: false" 
-    device-orientation-permission-ui="enabled: false">
+  <!-- カメラ映像（背景） -->
+  <video id="camera-video" autoplay playsinline muted></video>
 
-    <a-assets>
-      <!-- 1.jpg 〜 10.jpg を読み込みます -->
-      <img id="slide1" src="1.jpg">
-      <img id="slide2" src="2.jpg">
-      <img id="slide3" src="3.jpg">
-      <img id="slide4" src="4.jpg">
-      <img id="slide5" src="5.jpg">
-      <img id="slide6" src="6.jpg">
-      <img id="slide7" src="7.jpg">
-      <img id="slide8" src="8.jpg">
-      <img id="slide9" src="9.jpg">
-      <img id="slide10" src="10.jpg">
-    </a-assets>
-
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-    <!-- マーカーを認識したときに表示されるターゲット -->
-    <a-entity id="targetEntity" mindar-image-target="targetIndex: 0">
-      <!-- イラストを表示する板 (width/heightで比率を変更可能) -->
-      <a-plane 
-        id="slidePlane" 
-        src="#slide1" 
-        position="0 0 0" 
-        width="1" 
-        height="1.414" 
-        scale="1 1 1">
-      </a-plane>
-    </a-entity>
-
-  </a-scene>
+  <!-- イラストスライドショー -->
+  <div id="slide-container">
+    <img id="slide-img" src="1.jpg" alt="イラスト">
+  </div>
 
   <script>
     const statusEl = document.getElementById('status');
-    const sceneEl = document.querySelector('a-scene');
-    const slidePlane = document.querySelector('#slidePlane');
+    const videoEl = document.getElementById('camera-video');
+    const slideImg = document.getElementById('slide-img');
+    const container = document.getElementById('slide-container');
 
-    // 10枚の画像IDを配列にまとめる
-    const slideImages = [
-      '#slide1', '#slide2', '#slide3', '#slide4', '#slide5',
-      '#slide6', '#slide7', '#slide8', '#slide9', '#slide10'
+    // 10枚の画像ファイル名のリスト
+    const images = [
+      '1.jpg', '2.jpg', '3.jpg', '4.jpg', '5.jpg',
+      '6.jpg', '7.jpg', '8.jpg', '9.jpg', '10.jpg'
     ];
     let currentIndex = 0;
 
-    // カメラ起動・エラーの判定
-    sceneEl.addEventListener("arReady", () => {
-      statusEl.textContent = "カメラ起動成功！マーカーをかざしてください";
-      statusEl.className = "success";
-    });
-
-    sceneEl.addEventListener("arError", () => {
-      statusEl.textContent = "エラー: targets.mind の読み込み失敗";
-      statusEl.className = "error";
-    });
-
-    const targetEntity = document.querySelector('#targetEntity');
-    targetEntity.addEventListener('targetFound', () => {
-      updateStatusText();
-      statusEl.className = 'success';
-    });
-
-    targetEntity.addEventListener('targetLost', () => {
-      statusEl.textContent = 'マーカーを検索中...';
-      statusEl.className = '';
-    });
-
-    // 現在の何枚目かを表示に反映させる関数
-    function updateStatusText() {
-      statusEl.textContent = `認識成功！ (${currentIndex + 1} / ${slideImages.length}枚目)`;
+    // 1. スマホのバックカメラを起動する処理
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }, // 外側カメラを指定
+          audio: false
+        });
+        videoEl.srcObject = stream;
+        statusEl.textContent = `カメラ起動成功！ (1 / ${images.length}枚目)`;
+        statusEl.className = 'success';
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "エラー: カメラの権限が拒否されたか利用できません";
+        statusEl.className = 'error';
+      }
     }
+    startCamera();
 
-    // タップ操作・ピンチ操作の処理
+    // 2. タップ切替 ＆ 2本指ピンチ拡大縮小 ＆ ドラッグ移動の変数
+    let scale = 1;
+    let posX = 0;
+    let posY = 0;
+    
+    let startX = 0;
+    let startY = 0;
     let initialDistance = null;
     let initialScale = 1;
+    let isDragging = false;
     let touchStartTime = 0;
+    let hasMoved = false;
 
-    window.addEventListener('touchstart', (e) => {
+    // タッチ開始
+    container.addEventListener('touchstart', (e) => {
+      touchStartTime = Date.now();
+      hasMoved = false;
+
       if (e.touches.length === 1) {
-        touchStartTime = Date.now();
+        isDragging = true;
+        startX = e.touches[0].clientX - posX;
+        startY = e.touches[0].clientY - posY;
       } else if (e.touches.length === 2) {
+        isDragging = false;
         initialDistance = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
         );
-        if (slidePlane) {
-          const s = slidePlane.getAttribute('scale');
-          if (s) initialScale = s.x;
-        }
+        initialScale = scale;
       }
-    }, { passive: true });
+    }, { passive: false });
 
-    window.addEventListener('touchmove', (e) => {
-      if (!slidePlane) return;
+    // タッチ中（移動・ピンチ）
+    container.addEventListener('touchmove', (e) => {
+      e.preventDefault(); // 画面のスクロールやズームを防止
+      hasMoved = true;
 
-      // 2本指でのピンチイン・ピンチアウト（拡大縮小）
-      if (e.touches.length === 2 && initialDistance !== null && initialDistance > 0) {
+      if (e.touches.length === 1 && isDragging) {
+        // 1本指ドラッグで位置を動かす
+        posX = e.touches[0].clientX - startX;
+        posY = e.touches[0].clientY - startY;
+        updateTransform();
+      } else if (e.touches.length === 2 && initialDistance !== null && initialDistance > 0) {
+        // 2本指ピンチで拡大縮小
         const currentDistance = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
         );
         const factor = currentDistance / initialDistance;
-        let newScale = Math.max(0.2, Math.min(3.0, initialScale * factor));
-        slidePlane.setAttribute('scale', `${newScale} ${newScale} ${newScale}`);
+        scale = Math.max(0.2, Math.min(5.0, initialScale * factor));
+        updateTransform();
       }
-    }, { passive: true });
+    }, { passive: false });
 
-    window.addEventListener('touchend', (e) => {
-      // 1本指で素早くタップされた場合（300ミリ秒未満）
-      if (e.changedTouches.length === 1 && (Date.now() - touchStartTime < 300)) {
-        // インデックスを次へ進める。10枚目の次は 0 に戻る（ループ）
-        currentIndex = (currentIndex + 1) % slideImages.length;
-        
-        // 画像を切り替える
-        slidePlane.setAttribute('src', slideImages[currentIndex]);
-        
-        // 画面上の表示を更新
-        updateStatusText();
+    // タッチ終了
+    container.addEventListener('touchend', (e) => {
+      // 動かしていない状態で素早く（0.3秒未満）タップされた場合は画像を次へ進める（ループ）
+      if (!hasMoved && (Date.now() - touchStartTime < 300)) {
+        currentIndex = (currentIndex + 1) % images.length;
+        slideImg.src = images[currentIndex];
+        statusEl.textContent = `表示中 (${currentIndex + 1} / ${images.length}枚目)`;
       }
-      initialDistance = null;
+
+      if (e.touches.length === 0) {
+        isDragging = false;
+        initialDistance = null;
+      }
     });
+
+    // 画面に反映させる関数
+    function updateTransform() {
+      slideImg.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+    }
   </script>
 </body>
 </html>
