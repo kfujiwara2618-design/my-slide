@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>MindAR 10枚イラストスライドショー</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    #info-overlay {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #ffffff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      z-index: 999;
+      pointer-events: none;
+    }
+    #status { font-weight: bold; color: #ffd700; }
+    .success { color: #51cf66 !important; }
+    .error { color: #ff6b6b !important; }
+  </style>
+
+  <!-- A-Frame & MindAR の読み込み -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+</head>
+<body>
+
+  <!-- 操作ガイドの表示 -->
+  <div id="info-overlay">
+    <div>状態: <span id="status">準備中...</span></div>
+    <div style="margin-top: 4px; font-size: 10px; color: #aaa;">画面タップ: イラスト切替(1/10) / 2本指: 拡大縮小</div>
+  </div>
+
+  <a-scene 
+    mindar-image="imageTargetSrc: ./targets.mind;" 
+    vr-mode-ui="enabled: false" 
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <!-- 1.jpg 〜 10.jpg を読み込みます -->
+      <img id="slide1" src="1.jpg">
+      <img id="slide2" src="2.jpg">
+      <img id="slide3" src="3.jpg">
+      <img id="slide4" src="4.jpg">
+      <img id="slide5" src="5.jpg">
+      <img id="slide6" src="6.jpg">
+      <img id="slide7" src="7.jpg">
+      <img id="slide8" src="8.jpg">
+      <img id="slide9" src="9.jpg">
+      <img id="slide10" src="10.jpg">
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- マーカーを認識したときに表示されるターゲット -->
+    <a-entity id="targetEntity" mindar-image-target="targetIndex: 0">
+      <!-- イラストを表示する板 (width/heightで比率を変更可能) -->
+      <a-plane 
+        id="slidePlane" 
+        src="#slide1" 
+        position="0 0 0" 
+        width="1" 
+        height="1.414" 
+        scale="1 1 1">
+      </a-plane>
+    </a-entity>
+
+  </a-scene>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const sceneEl = document.querySelector('a-scene');
+    const slidePlane = document.querySelector('#slidePlane');
+
+    // 10枚の画像IDを配列にまとめる
+    const slideImages = [
+      '#slide1', '#slide2', '#slide3', '#slide4', '#slide5',
+      '#slide6', '#slide7', '#slide8', '#slide9', '#slide10'
+    ];
+    let currentIndex = 0;
+
+    // カメラ起動・エラーの判定
+    sceneEl.addEventListener("arReady", () => {
+      statusEl.textContent = "カメラ起動成功！マーカーをかざしてください";
+      statusEl.className = "success";
+    });
+
+    sceneEl.addEventListener("arError", () => {
+      statusEl.textContent = "エラー: targets.mind の読み込み失敗";
+      statusEl.className = "error";
+    });
+
+    const targetEntity = document.querySelector('#targetEntity');
+    targetEntity.addEventListener('targetFound', () => {
+      updateStatusText();
+      statusEl.className = 'success';
+    });
+
+    targetEntity.addEventListener('targetLost', () => {
+      statusEl.textContent = 'マーカーを検索中...';
+      statusEl.className = '';
+    });
+
+    // 現在の何枚目かを表示に反映させる関数
+    function updateStatusText() {
+      statusEl.textContent = `認識成功！ (${currentIndex + 1} / ${slideImages.length}枚目)`;
+    }
+
+    // タップ操作・ピンチ操作の処理
+    let initialDistance = null;
+    let initialScale = 1;
+    let touchStartTime = 0;
+
+    window.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        touchStartTime = Date.now();
+      } else if (e.touches.length === 2) {
+        initialDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if (slidePlane) {
+          const s = slidePlane.getAttribute('scale');
+          if (s) initialScale = s.x;
+        }
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!slidePlane) return;
+
+      // 2本指でのピンチイン・ピンチアウト（拡大縮小）
+      if (e.touches.length === 2 && initialDistance !== null && initialDistance > 0) {
+        const currentDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const factor = currentDistance / initialDistance;
+        let newScale = Math.max(0.2, Math.min(3.0, initialScale * factor));
+        slidePlane.setAttribute('scale', `${newScale} ${newScale} ${newScale}`);
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      // 1本指で素早くタップされた場合（300ミリ秒未満）
+      if (e.changedTouches.length === 1 && (Date.now() - touchStartTime < 300)) {
+        // インデックスを次へ進める。10枚目の次は 0 に戻る（ループ）
+        currentIndex = (currentIndex + 1) % slideImages.length;
+        
+        // 画像を切り替える
+        slidePlane.setAttribute('src', slideImages[currentIndex]);
+        
+        // 画面上の表示を更新
+        updateStatusText();
+      }
+      initialDistance = null;
+    });
+  </script>
+</body>
+</html>
